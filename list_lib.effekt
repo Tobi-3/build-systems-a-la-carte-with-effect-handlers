@@ -1,0 +1,63 @@
+module list_lib
+
+import immutable/list
+
+
+def foldr[A,B](l: List[A], seed: B){ f : (A, B) => B  } : B = l match{
+	case Nil() => seed
+	case Cons(fst, rest) => f(fst, foldr(rest, seed){ (a, acc) => f(a, acc) })
+}
+
+
+def join(l: List[String], seperator: String) : String = l match{
+	case Nil() => ""
+	case Cons(fst, Nil()) => fst 
+	case Cons(fst, rest) => fst ++ seperator ++ join(rest, seperator)
+}
+
+
+def filter[A](l: List[A]){f : A => Boolean} : List[A] = l match {
+	case Nil() => Nil()
+	case Cons(fst, rest) => f(fst) match {
+		case true => Cons(fst, filter(rest){ n => f(n) })
+		case _ => filter(rest){ n => f(n) }
+	}
+}
+
+
+def all[A](l: List[A]){ f: A => Boolean }: Boolean = l match {
+	case Nil() => false
+	case Cons(a, Nil()) => f(a)
+	case Cons(a, rest) => f(a) match {
+		case true => all(rest){ g => f(g) }
+		case _ => false
+	}
+}
+
+
+def any[A](l: List[A]){ f: A => Boolean }: Boolean = l match {
+	case Nil() => false
+	case Cons(a, Nil()) => f(a)
+	case Cons(a, rest) => f(a) match {
+		case true => true
+		case false => any(rest){ g => f(g) }
+	}
+}
+
+
+// def main() = {
+//  val list = [1,2,3]
+//  val list2 = [2,2]
+//  val list3 : List[Int]= []
+// 	val testAnd = all(list){ num => num  < 4 }
+// 	val testAnd2 = all(list){ num => num  < 2 }
+// 	val testAny = any(list3){ num => num  < 2 }
+
+// 	println(testAnd)
+// 	println(testAnd2)
+// 	println(testAny)
+	
+
+
+// 	println("")
+// }

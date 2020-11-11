@@ -1,0 +1,161 @@
+module make_example
+
+import immutable/list
+import immutable/option
+import mutable/map
+import mutable/array
+import list_lib
+
+type File = String
+type Dependencies = List[File]
+type Time = Int
+
+record Filesystem(now: Array[Time], fileModTimes: Map[File, Time])
+
+
+effect Need(p: Dependencies): List[File]
+
+// def rules
+// represents a makefile
+def rules(target: File): List[File] / { Need } = target match {
+        case "util.o" => do Need(["util.h","util.c"])
+        case "main.o" => do Need(["util.h","main.c"])
+        case "main.exe" => do Need(["util.o","main.o"])
+        case _ => [""]                                                         
+    }
+
+
+// def make
+// handles Need
+def make(target: File, filesystem: Filesystem) { rules: File => List[File] / { Need } } : List[File] / { Need, Console } =
+    if (hasToBeBuilt(target, filesystem)){
+        try { rules(target) } with Need { dependencies =>
+            println("building " ++ target ++ "...")
+            val deps = join(dependencies, ", ")
+            println("Need " ++ deps ++ " for " ++ target)
+
+            foreach(dependencies) { t => make(t, filesystem){ f => rules(f) }; () }
+            updateFilesystem(filesystem, [target])
+            println("--> using " ++ deps ++ " to build " ++ target);
+            println("...finished building " ++ target ++ "\n")
+            resume([""])
+        }
+    } else [""]
+
+
+// recursively checks if target has to be built using file modification times
+def hasToBeBuilt(target: File, filesystem: Filesystem): Boolean / { Need } = {
+    val dirty: Boolean = (filesystem.fileModTimes.get(target)) match {
+        case None()  => true
+        case _ => val dependencies = getDependencies(target); 
+                dependencies match {
+                    case Cons("", Nil()) => false // files without dependencies
+                    case _ => all(dependencies){ dependency => fileExists(dependency, filesystem) } match { // all dependencies exist?
+                        case false => true
+                        case true  => any(dependencies){ dependency => // any dependencies newer than target?
+                            filesystem.fileModTimes.unsafeGet(dependency) > filesystem.fileModTimes.unsafeGet(target) }
+                            || foldr(dependencies, false){ (dependency, acc) => hasToBeBuilt(dependency, filesystem) || acc} 
+                    }  
+                }
+    }
+    dirty
+}
+
+
+// creates file if file does not exist
+// increments modifiying time if file exists
+def updateFilesystem(filesystem: Filesystem, files: List[File]) : Unit = {
+    var timeNow: Time = filesystem.now.unsafeGet(0)
+    files.foreach { file => 
+        timeNow = timeNow + 1
+        filesystem.fileModTimes.update(file, timeNow)
+    }
+    filesystem.now.put(0, timeNow);
+    ()
+}
+
+
+def getDependencies(target: File): Dependencies / { Need }  = try { rules(target) }
+    with Need { dependencies =>
+        resume(dependencies)
+    }
+
+
+def fileExists(file: File, filesystem: Filesystem): Boolean = {
+    filesystem.fileModTimes.get(file) != None()
+}
+
+
+def main() = try { 
+    // initialize time to 0 
+    val timeNowArr: Array[Time] = emptyArray()
+    timeNowArr.put(0,0)
+
+    var filesystem: Filesystem = Filesystem(timeNowArr, emptyMap())
+    updateFilesystem(filesystem, ["util.h", "util.c", "main.c"])
+    
+    println("initial entries:")
+    println("util.h: " ++ show(get(filesystem.fileModTimes)("util.h")))
+    println("util.c: " ++ show(get(filesystem.fileModTimes)("util.c")))
+    println("util.o: " ++ show(get(filesystem.fileModTimes)("util.o")))
+    println("main.o: " ++ show(get(filesystem.fileModTimes)("main.o")))
+    println("main.c: " ++ show(get(filesystem.fileModTimes)("main.c")))
+    println("main.exe: " ++ show(get(filesystem.fileModTimes)("main.exe")))
+    
+    println("")
+    make("main.exe", filesystem){ target => rules(target) } 
+    println("")
+    
+    println("after make:")
+    println("util.h: " ++ show(get(filesystem.fileModTimes)("util.h")))
+    println("util.c: " ++ show(get(filesystem.fileModTimes)("util.c")))
+    println("util.o: " ++ show(get(filesystem.fileModTimes)("util.o")))
+    println("main.o: " ++ show(get(filesystem.fileModTimes)("main.o")))
+    println("main.c: " ++ show(get(filesystem.fileModTimes)("main.c")))
+    println("main.exe: " ++ show(get(filesystem.fileModTimes)("main.exe")))
+    println("")
+
+    println("Not updating files, nothing should change")
+    make("main.exe", filesystem){ target => rules(target) } 
+    println("")
+    
+    println("after 2nd make:")
+    println("util.h: " ++ show(get(filesystem.fileModTimes)("util.h")))
+    println("util.c: " ++ show(get(filesystem.fileModTimes)("util.c")))
+    println("util.o: " ++ show(get(filesystem.fileModTimes)("util.o")))
+    println("main.o: " ++ show(get(filesystem.fileModTimes)("main.o")))
+    println("main.c: " ++ show(get(filesystem.fileModTimes)("main.c")))
+    println("main.exe: " ++ show(get(filesystem.fileModTimes)("main.exe")))
+    println("")
+    
+    println("updating main.c, manin.o, main.exe should change")
+    updateFilesystem(filesystem, ["main.c"])
+    make("main.exe", filesystem){ target => rules(target) } 
+    println("")
+    
+    println("after 2nd make:")
+    println("util.h: " ++ show(get(filesystem.fileModTimes)("util.h")))
+    println("util.c: " ++ show(get(filesystem.fileModTimes)("util.c")))
+    println("util.o: " ++ show(get(filesystem.fileModTimes)("util.o")))
+    println("main.o: " ++ show(get(filesystem.fileModTimes)("main.o")))
+    println("main.c: " ++ show(get(filesystem.fileModTimes)("main.c")))
+    println("main.exe: " ++ show(get(filesystem.fileModTimes)("main.exe")))
+    println("")
+
+    println("updating util.h, util.c, all timestamps should change except main.c")
+    updateFilesystem(filesystem, ["util.h", "util.c"])
+    make("main.exe", filesystem){ target => rules(target) } 
+    println("")
+    
+    println("after 3rd make:")
+    println("util.h: " ++ show(get(filesystem.fileModTimes)("util.h")))
+    println("util.c: " ++ show(get(filesystem.fileModTimes)("util.c")))
+    println("util.o: " ++ show(get(filesystem.fileModTimes)("util.o")))
+    println("main.o: " ++ show(get(filesystem.fileModTimes)("main.o")))
+    println("main.c: " ++ show(get(filesystem.fileModTimes)("main.c")))
+    println("main.exe: " ++ show(get(filesystem.fileModTimes)("main.exe")))
+    println("")
+
+
+} with Need { (ignore) => resume([""]) }
+
