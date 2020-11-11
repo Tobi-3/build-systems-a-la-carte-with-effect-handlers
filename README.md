@@ -1,1 +1,1 @@
-# build systems à la carte with effect-handlers
+# build systems à la carte with effect handlers
