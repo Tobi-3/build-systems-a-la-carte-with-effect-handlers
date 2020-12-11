@@ -1,0 +1,68 @@
+import mutable/map
+import text/string
+import immutable/list
+import immutable/option
+
+type K = (Int, Int)
+type V = Int
+
+
+effect FetchChar {
+    def get1stStringCharAt(index: Int): String
+    def get2ndStringCharAt(index: Int): String
+}
+effect SolveSubProblem(ij: K): Int
+
+
+
+def editDistance(key: (Int,Int)) = key match {
+    case (i, 0) => i
+    case (0, j) => j
+    case (i, j) => 
+        val ai = get1stStringCharAt(i)
+        val bj = get2ndStringCharAt(j)
+        if (ai == bj) {
+            do SolveSubProblem( (i-1, j-1) )
+        } else {
+            val insert  = do SolveSubProblem( (i, j-1) )
+            val del     = do SolveSubProblem( (i-1, j) )
+            val replace = do SolveSubProblem( (i-1, j-1) ) 
+            
+            1 + min(min(insert, del), replace)
+        }
+    
+}
+
+def handleEditDistance(fst: String, snd: String) = { 
+    val store: Map[K,V] = emptyMap()
+    def recEditDistance(key: K): V = try { editDistance(key) } 
+        with SolveSubProblem { ij => (store.get(ij)) match {
+                case None() => store.update(ij, recEditDistance(ij)); resume(store.unsafeGet(ij))
+                case Some(value) => resume(value)
+            }
+        } 
+        with FetchChar { 
+            def get1stStringCharAt(index) = resume(fst.unsafeCharAt(index - 1))
+            def get2ndStringCharAt(index) = resume(snd.unsafeCharAt(index - 1)) 
+        }
+
+    recEditDistance((fst.length, snd.length))
+    
+}
+
+def min(a: Int, b:Int): Int = if(a > b) a else b
+
+def main() = {
+    val a = "hell"
+    val b = "hallo"
+    val c = "world"
+
+    
+    val distance = handleEditDistance(a,b)
+    val distance2 = handleEditDistance(a,c)
+    println(distance)
+    println(distance2)
+
+
+
+}

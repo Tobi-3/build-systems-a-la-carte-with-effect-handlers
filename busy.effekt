@@ -1,0 +1,66 @@
+import traces
+
+import mutable/map
+
+
+def busy(key: K){ tasks: K => V / { Fetch, NeedInput, Store } } = {
+	
+	def fetch(k: K): V = try {  
+		val v = tasks(k)
+		putValue(k, v)
+		v 
+	} with Fetch { key => resume(fetch(key)
+	} with NeedInput{ key => getValue(key) }
+	
+	fetch(key)
+}
+
+// effect GetStore(): Map[K,V]
+
+// def busy(key: K){ tasks: K => V / { Fetch, NeedInput } }: V / { Console, GetStore } = {
+// 	val store = do GetStore()
+// 	def fetch(k: K): V / Store = try {  
+// 		val v = tasks(k)
+// 		putValue(k, v)
+// 		v 
+// 	} with Fetch { key => resume(fetch(key))
+// 	} with NeedInput{ key => getValue(key) }
+	
+// 	try { fetch(key) } with Store {
+//         def getValue(key) = { 
+// 			println("getting input " ++ key ++ " from Store")
+// 			resume(store.unsafeGet(key)) }
+        
+// 		def putValue(key, value) = { 
+// 			println("putting " ++ "(" ++ key ++ ", " ++ show(value) ++") in store")
+// 			resume(store.update(key, value))
+// 		}
+// 	} 
+// } 
+	
+
+def main() = {
+
+    val store: Map[K,V] = emptyMap()
+	store.update("A1", 10)
+	store.update("A2", 20)
+
+    try { 
+		busy("B2"){ k => sprsh1(k) }
+		val b1: V = store.unsafeGet("B1")
+		val b2: V = store.unsafeGet("B2")
+		println("B1: " ++ show(b1))
+		println("B2: " ++ show(b2))
+	} with Store { // evtl allgemein als handlSTore
+        def getValue(key) = { 
+			println("getting input " ++ key ++ " from Store")
+			resume(store.unsafeGet(key)) }
+        
+		def putValue(key, value) = { 
+			println("putting " ++ "(" ++ key ++ ", " ++ show(value) ++") in store")
+			resume(store.update(key, value))
+		}
+	}
+	// with GetStore { resume(store) }
+
+}
