@@ -1,9 +1,12 @@
+module edit_distance
+
 import mutable/map
+import mutable/array
 import text/string
 import immutable/list
 import immutable/option
 
-type K = (Int, Int)
+type K = String
 type V = Int
 
 
@@ -11,33 +14,44 @@ effect FetchChar {
     def get1stStringCharAt(index: Int): String
     def get2ndStringCharAt(index: Int): String
 }
+effect Store {
+    def getValue(key: K): Option[V]
+	def putValue(key: K, value: V): Unit 
+}
 effect SolveSubProblem(ij: K): Int
 
 
 
-def editDistance(key: (Int,Int)) = key match {
+def editDistance(key: K): V / {SolveSubProblem, FetchChar, Console} = {
+    val ijArr = key.split("")
+    val ij: Tuple2[Int,Int] = (ijArr.unsafeGet(0).unsafeToInt, ijArr.unsafeGet(1).unsafeToInt)
+    ij match {
     case (i, 0) => i
     case (0, j) => j
     case (i, j) => 
         val ai = get1stStringCharAt(i)
         val bj = get2ndStringCharAt(j)
         if (ai == bj) {
-            do SolveSubProblem( (i-1, j-1) )
+            do SolveSubProblem( show(i-1) ++ show(j-1))
         } else {
-            val insert  = do SolveSubProblem( (i, j-1) )
-            val del     = do SolveSubProblem( (i-1, j) )
-            val replace = do SolveSubProblem( (i-1, j-1) ) 
+            val insert  = do SolveSubProblem( show(i) ++ show(j-1) ) 
+            val del     = do SolveSubProblem( show(i-1) ++ show(j) )
+            val replace = do SolveSubProblem( show(i-1) ++ show(j-1) ) 
             
             1 + min(min(insert, del), replace)
         }
-    
+    }
 }
 
-def handleEditDistance(fst: String, snd: String) = { 
-    val store: Map[K,V] = emptyMap()
-    def recEditDistance(key: K): V = try { editDistance(key) } 
-        with SolveSubProblem { ij => (store.get(ij)) match {
-                case None() => store.update(ij, recEditDistance(ij)); resume(store.unsafeGet(ij))
+def handleEditDistance(fst: String, snd: String): V / { Store, Console} = { 
+
+    def recEditDistance(key: K): V = try {
+        val v = editDistance(key) 
+        putValue(key, v)
+        v
+        } 
+        with SolveSubProblem { ij => (getValue(ij)) match {
+                case None() => resume(recEditDistance(ij))
                 case Some(value) => resume(value)
             }
         } 
@@ -46,23 +60,27 @@ def handleEditDistance(fst: String, snd: String) = {
             def get2ndStringCharAt(index) = resume(snd.unsafeCharAt(index - 1)) 
         }
 
-    recEditDistance((fst.length, snd.length))
+    recEditDistance(show(fst.length) ++ show(snd.length))
     
 }
 
-def min(a: Int, b:Int): Int = if(a > b) a else b
+def min(a: Int, b:Int): Int = if(a < b) a else b
 
 def main() = {
     val a = "hell"
     val b = "hallo"
     val c = "world"
 
+    var store: Map[K,V] = emptyMap()
     
-    val distance = handleEditDistance(a,b)
-    val distance2 = handleEditDistance(a,c)
-    println(distance)
-    println(distance2)
-
-
-
+    try { 
+        val distance = handleEditDistance(a,b)
+        store = emptyMap()
+        val distance2 = handleEditDistance(a,c)
+        println(distance)
+        println(distance2)
+    } with Store {
+        def getValue(key) = resume(store.get(key))
+        def putValue(key, value) = resume(store.update(key, value))
+    }
 }
