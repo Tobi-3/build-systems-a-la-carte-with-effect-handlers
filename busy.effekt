@@ -9,7 +9,7 @@ def busy(key: K){ tasks: K => V / { Fetch, NeedInput, Store } } = {
 		val v = tasks(k)
 		putValue(k, v)
 		v 
-	} with Fetch { key => resume(fetch(key)
+	} with Fetch { key => resume(fetch(key))
 	} with NeedInput{ key => getValue(key) }
 	
 	fetch(key)
