@@ -1,5 +1,6 @@
 module list_lib
 
+
 import immutable/list
 
 
@@ -9,10 +10,10 @@ def foldr[A,B](l: List[A], seed: B){ f : (A, B) => B  } : B = l match{
 }
 
 
-def join(l: List[String], seperator: String) : String = l match{
+def join[A](l: List[A])( seperator: String) : String = l match{
 	case Nil() => ""
-	case Cons(fst, Nil()) => fst 
-	case Cons(fst, rest) => fst ++ seperator ++ join(rest, seperator)
+	case Cons(fst, Nil()) => show(fst) 
+	case Cons(fst, rest) => show(fst) ++ seperator ++ rest.join(seperator)
 }
 
 
