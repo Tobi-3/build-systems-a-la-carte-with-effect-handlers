@@ -1,125 +1,34 @@
 
 module traces 
 
-import immutable/list
 import mutable/map
+import immutable/list
+
+import tasks/all_tasks
+
 import list_lib
 
-type K = String 
-type V = Int
+type  VT = List[Trace[Hash[V]]] // Verifying Traces
 
-effect Fetch(key: K): V
-effect NeedInput(key: K): V
-
-record Hash[V](value: V)
-record Trace[K,V,R](key: K, depends: List[(K,Hash[V])], result: R)  
-record Store[I, K, V](info: I, store: Map[K,V])
-
-type VT = List[Trace[K,V,Hash[V]]] // Verifying Traces
-
-def sprsh2(key: K): V / { Fetch, NeedInput } = key match { // Tasks
-	// case "B1" => val c1 = do Fetch("C1"); do Fetch(if(c1 == 1) "B2" else "A2")
-	// case "B2" => val c1 = do Fetch("C1"); do Fetch(if(c1 == 1) "A1" else "B1")
-	
-	case "B1" => val c1 = do Fetch("C1"); 
-		if(c1 == 1){ do Fetch("B2") } 
-		else { do Fetch("A2") }
-	
-	case "B2" => val c1 = do Fetch("C1"); 
-		if(c1 == 1){ do Fetch("A1") } 
-		else { do Fetch("B1") }
-
-	case _ => do NeedInput(key)
+effect VTState {
+    def getVT(): VT
+    def modify(key: K, valueHash: Hash[V], deps: List[(K,Hash[V])]): Unit
 }
-
-
 
 def recordVT(key: K, valueHash: Hash[V], deps: List[(K,Hash[V])], ts: VT[K,V,Hash[V]]): VT[K,V,Hash[V]] = {
-	ts.append([Trace(key, deps, valueHash)])
+	Cons(Trace(key, deps, valueHash), ts)
 }
 
 
-def hash[A](value: A) = Hash(value) // "hashes" value
-
-// def verifyVT(key: K, valueHash: Hash[V], ts: VT[K,V,Hash[V]]) : Boolean / Fetch = {
-// 	any(ts){ trace => trace match {
-// 			case Trace(k, deps, result) =>  
-// 				if(k != key || result != valueHash) { false }
-// 				else { all(deps){ pair => 
-// 					val h = pair.second;
-// 					val depK = pair.first;
-// 					h == hash(do Fetch(depK)) } 
-// 				}
-// 		} 
-// 	}
-// }
-
-
-def track(){ task: () => V / { Fetch } } : (V, List[(K, V)]) / { Fetch } = {
-	var dependencies: List[(K, V)] = []
-	val v = try { task() } with Fetch { key => 
-		val v: V = do Fetch(key)
-		dependencies = dependencies.append([(key, v)])
-		resume(v)  
-	}
-	(v, dependencies)
-}
-
-
-def verifyVT(key: K, valueHash: Hash[V], ts: VT[K,V,Hash[V]]){ fetch: K => Hash[V] / Fetch } : Boolean / Fetch= {
-	any(ts){ trace => trace match {
-			case Trace(k, deps, result) =>  
-				if(k != key || result != valueHash) { false }
-				else { all(deps){ pair => 
-					val h = pair.second;
-					val depK = pair.first;
-					h == fetch(depK) } 
-				}
+def verifyVT(key: K, valueHash: Hash[V], ts: VT[K,V,Hash[V]]){ fetchHash: K => Hash[V] / Fetch } : Boolean / Fetch = {
+	ts.any{ trace => trace match {
+		case Trace(k, deps, result) =>  
+			if(k != key || result != valueHash) { false }
+			else { deps.and{ keyHashPair => keyHashPair match {
+						case (k, h) => h == fetchHash(k)
+					}
+				} 
 			}
-	}
-}
-
-
-def vtRebuilder(key: K, value: V, ts: VT){ task: () => V / Fetch } = {
-	val upToDate = verifyVT(key, hash(value), ts){ k => hash (do Fetch(k)) }
-	if(upToDate) { value }
-	else { // rebuild value and add to VT
-		val newValueDeps : (V, List[(K,V)]) = track(){ () => task() }
-		val newValue = newValueDeps.first
-		val deps = newValueDeps.second
-		val hashedDeps: List[(K,Hash[V])] = deps.map{ pair => (pair.first, hash(pair.second)) }
-		recordVT(key, hash(value), hashedDeps, ts) // throw effect to record VT globally?
-		newValue
-	}
-} 																																					
-
-def main() = {
-	
-	
-	def supplyInput[V](){ prog: () => V / NeedInput }: V = 
-		try { prog() } with NeedInput { key =>
-			var input = key match {
-				case "A1" => 10
-				case "A2" => 20
-				case "C1" => 1
-				
-				// supplied by fetch (fetchIO in paper)
-				case "B2" => 10
-				case _ => 42
-			}
-			resume(input)
 		}
-
-	val tracked = supplyInput(){ () => try { track(){ sprsh2("B1") } } 
-		with Fetch { key =>
-				val input = do NeedInput(key)
-				println(key ++ ": " ++ show(input)) 
-				resume(input) 
-			}
-		} 
-		
-	
-	
-	val somewhatPrettierTracked = "("++ show(tracked.first) ++ ", [" ++ tracked.second.join(", ") ++"]" ++ ")"
-	println(somewhatPrettierTracked)
+	}
 }

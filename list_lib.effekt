@@ -26,11 +26,11 @@ def filter[A](l: List[A]){f : A => Boolean} : List[A] = l match {
 }
 
 
-def all[A](l: List[A]){ f: A => Boolean }: Boolean = l match {
-	case Nil() => false
+def and[A](l: List[A]){ f: A => Boolean }: Boolean = l match {
+	case Nil() => true
 	case Cons(a, Nil()) => f(a)
 	case Cons(a, rest) => f(a) match {
-		case true => all(rest){ g => f(g) }
+		case true => and(rest){ g => f(g) }
 		case _ => false
 	}
 }

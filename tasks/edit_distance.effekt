@@ -20,23 +20,30 @@ effect Store {
 }
 effect SolveSubProblem(ij: K): Int
 
+def indexTuple(key: String): (Int,Int) = { 
+    val ijArr = key.split("")
+    val tuple = (ijArr.unsafeGet(0).unsafeToInt, ijArr.unsafeGet(1).unsafeToInt)
+    tuple
+}
 
+def makeKey(i: Int, j: Int): K = {
+    show(i) ++ show(j)
+}
 
 def editDistance(key: K): V / {SolveSubProblem, FetchChar, Console} = {
-    val ijArr = key.split("")
-    val ij: Tuple2[Int,Int] = (ijArr.unsafeGet(0).unsafeToInt, ijArr.unsafeGet(1).unsafeToInt)
-    ij match {
+    
+    indexTuple(key) match {
     case (i, 0) => i
     case (0, j) => j
     case (i, j) => 
         val ai = get1stStringCharAt(i)
         val bj = get2ndStringCharAt(j)
         if (ai == bj) {
-            do SolveSubProblem( show(i-1) ++ show(j-1))
+            do SolveSubProblem( makeKey(i-1, j-1) )
         } else {
-            val insert  = do SolveSubProblem( show(i) ++ show(j-1) ) 
-            val del     = do SolveSubProblem( show(i-1) ++ show(j) )
-            val replace = do SolveSubProblem( show(i-1) ++ show(j-1) ) 
+            val insert  = do SolveSubProblem( makeKey(i  , j-1) ) 
+            val del     = do SolveSubProblem( makeKey(i-1, j  ) )
+            val replace = do SolveSubProblem( makeKey(i-1, j-1) ) 
             
             1 + min(min(insert, del), replace)
         }

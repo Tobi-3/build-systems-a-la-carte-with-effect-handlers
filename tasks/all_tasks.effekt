@@ -1,0 +1,85 @@
+module tasks_all_tasks
+
+import immutable/list
+
+// types'n records 
+type K = String
+type V = Int
+
+
+effect Fetch(key: K): V
+effect NeedInput(key: K): V
+effect Dirty(key: K): Boolean
+
+effect Store {
+    def getValue(key: K): V
+    def putValue(key: K, value: V): Unit 
+}
+
+
+record Hash[V](value: V)
+record Trace[R](key: K, depends: List[(K,Hash[V])], result: R)  
+
+def hash[A](value: A) = Hash(value) // pseudo hash function
+
+
+// ---- tasks -----------------------------------------------------------------
+
+def sprsh1(key: K): V / { Fetch, NeedInput } = key match {
+    case "B1" => do Fetch("A1") + do Fetch("A2") 
+    case "B2" => do Fetch("B1") * 2 
+    case  _  => do NeedInput(key)
+}
+
+
+def sprsh2(key: K): V / { Fetch, NeedInput } = key match { // Tasks
+    // case "B1" => val c1 = do Fetch("C1"); do Fetch(if(c1 == 1) "B2" else "A2")
+    // case "B2" => val c1 = do Fetch("C1"); do Fetch(if(c1 == 1) "A1" else "B1")
+    
+    case "B1" => val c1 = do Fetch("C1"); 
+        if(c1 == 1){ do Fetch("B2") } 
+        else { do Fetch("A2") }
+    
+    case "B2" => val c1 = do Fetch("C1"); 
+        if(c1 == 1){ do Fetch("A1") } 
+        else { do Fetch("B1") }
+
+    case _ => do NeedInput(key)
+}
+
+
+def tasks(key: String): Int / Fetch = key match { 
+    case "A" => do Fetch("C") + do Fetch("B")
+    case "B" => do Fetch("B") * if(true) do Fetch("A") else 300
+    case "C" => do Fetch("A") * do Fetch("A")
+    case  _  => 42
+}
+
+
+def lotsOfDeps(key: K): V / {Fetch, NeedInput} = key match {
+    case "A" => do Fetch("B") + do Fetch("C")
+    case "B" => do Fetch("D") + do Fetch("E")
+    case "C" => do Fetch("F") + do Fetch("B")
+    case "D" => 1 + Fetch("H")
+    case "E" => do NeedInput(key) 
+    case "F" => do NeedInput(key) 
+    case "G" => do NeedInput(key) 
+    case "H" => do NeedInput(key) 
+}
+
+
+def onlyInput(key: K): V / NeedInput = key match { 
+    case "Z" => do NeedInput(key)
+}
+
+
+// represents a makefile
+def makefile(target: K): V / { Fetch, NeedInput } = target match {
+		case "util.o" => do Fetch("util.h"); do Fetch("util.c");
+        case "main.o" => do Fetch("util.h"); do Fetch("main.c");
+        case "main.exe" => do Fetch("util.o"); do Fetch("main.o");
+		case _ => do NeedInput(target)                                                         
+	}
+
+
+// END tasks examples ---------------------------------------------------------

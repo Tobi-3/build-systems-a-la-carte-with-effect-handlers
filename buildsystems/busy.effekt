@@ -1,7 +1,7 @@
 import traces
 
 import mutable/map
-
+import tasks/all_tasks
 
 def busy(key: K){ tasks: K => V / { Fetch, NeedInput, Store } } = {
 	

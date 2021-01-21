@@ -1,0 +1,64 @@
+module excel
+
+import mutable/map
+import immutable/list
+import immutable/option
+
+import tasks/all_tasks
+
+import list_lib
+
+type Chain = List[K]
+type ExcelInfo = (Map[K,Boolean], Chain)
+type Either[A,B]{
+    Right(value: A)
+    Left(key: B)
+}
+
+effect Dirty(key: K): Boolean
+effect CleanStore(key: K): Unit
+effect State {
+    def getChain(): Chain
+}
+
+
+def restarting(target: K){ rebuilder: (K,V) => V } = {
+    val chain: Chain = getChain()
+    val done: Map[K, Boolean] = emptyMap()
+    // val newChain
+    def go(c: Chain) = c match {
+        case Nil() => []
+        case Cons(key, keys) => 
+            def fetch(k: K) : Either[V,K] = {
+                (done.get(key)) match {
+                    case Some(_) => Right(getValue(k))
+                    case _ => Left(key)
+                }
+            }
+            val result = try { rebuilder(key, getValue(key)) }
+                with Fetch { k => resume(fetch(k)) }
+                with NeedInput { k => done.update(key, true); resume(Cons(key, go(keys))) }
+            result match {
+                case Left(dep) => go((Cons(dep, keys.filter{ k => k != dep})).append([key]))
+                case Right(newValue) => putValue(key, newValue); done.update(key, true)
+                                        Cons(key, go(keys))
+            }     
+    } 
+    ()
+}
+
+
+val DirtyBitStore: Map[K, Boolean] = emptyMap()
+
+def dirtybitRebuilder(key: K, value: V){ task: () => V / Fetch }{fetch: K => V} : V / { CleanStore, Dirty, Fetch  } = {
+	
+	val dirty: Boolean = do Dirty(key)
+	if(dirty){ try { task() } with Fetch { k => fetch(k)} }
+	else { value } 
+}
+
+
+def main() = {
+	()
+	
+}

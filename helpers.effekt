@@ -1,0 +1,54 @@
+module helpers
+
+import tasks/all_tasks
+
+import mutable/map
+import immutable/list
+import immutable/option
+import graph
+
+def dependencies{ task: () => V / {Fetch, NeedInput} }: List[K] = {
+	var dependencies: List[K] =  []
+    try { task() }
+		with Fetch { dep =>  dependencies = dependencies.append([dep]); resume(0)}
+		with NeedInput { _ => resume(1) }
+
+	dependencies
+}
+
+
+def track(){ task: () => V / { Fetch } }{ fetch: K => V / Fetch} : (V, List[(K, V)]) / { Fetch } = {
+	var dependencies: List[(K, V)] = []
+	val v = try { task() } with Fetch { key => 
+		val v = fetch(key)
+		dependencies = dependencies.append([(key, v)])
+		resume(v)  
+	}
+	(v, dependencies)
+}
+
+def graph(key: K){ tasks: K => V / {Fetch, NeedInput}}: Graph = {
+	
+	var adjacencyList: List[AdjListEntry] = []
+	
+	def constructGraph(target: K): Unit = { 
+		val newDeps = dependencies{ () => tasks(target) }
+		adjacencyList = adjacencyList.append([AdjListEntry(target, newDeps)])
+		newDeps.foreach{ dependency => constructGraph(dependency) }
+	}
+
+	constructGraph(key)
+	adjacencyList
+}
+
+
+// creates file if file does not exist
+// increments modifiying time if file exists
+// def updateFilesystem(filesystem: MakeInfo, files: List[K]) : Unit = {
+// 	var timeNow: Time = filesystem.now.get
+// 	files.foreach { file => 
+// 		filesystem.modTimes.update(file, timeNow)
+// 		timeNow = timeNow + 1
+// 	}
+// 	filesystem.now.put(timeNow)
+// }

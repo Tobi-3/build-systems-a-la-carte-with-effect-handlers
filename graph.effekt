@@ -2,6 +2,7 @@ module graph
 
 import mutable/map
 import immutable/list
+
 import list_lib
 
 record AdjListEntry(vertex: String, neighbors: List[String])
@@ -28,84 +29,85 @@ effect Finished(vertex: String): Unit
 // }
 
 
-def dfs(graph: Graph): Unit / Finished = {
-    val verticesVisited: Map[String, Boolean] = emptyMap()
+def dfs(graph: Graph): Unit / { Finished } = {
+	val verticesVisited: Map[String, Boolean] = emptyMap()
 
-    // set all vertices to unvisited
-    graph.foreach{ adjEntry => 
-        verticesVisited.update(adjEntry.vertex, false)    
-    }
+	// set all vertices to unvisited
+	graph.foreach{ adjEntry => 
+		verticesVisited.update(adjEntry.vertex, false)    
+	}
 
-    //expected to find an entry
-    def lookupNeighbors(graph: Graph)(v: String): AdjListEntry  = {
-        graph match { 
-            case Cons(adjEntry, rest) => (adjEntry.vertex == v) match {
-                case true => adjEntry
-                case _ => rest.lookupNeighbors(v)  
-            }
-            case _ => AdjListEntry("lookup failed", []) // should never happen
-        }
-    }
-    
-    // recursive subprocedure for dfs
-    def dfs_visit(entry: AdjListEntry): Unit / Finished = {
-        entry.neighbors.foreach{ vertex => 
-            val visited: Boolean = verticesVisited.unsafeGet(vertex)
-            if(visited) { () }
-            else{ dfs_visit(graph.lookupNeighbors(vertex)) }
-        }
-        verticesVisited.update(entry.vertex, true)
-        do Finished(entry.vertex)
-    }
+	//expected to find an entry
+	def lookupNeighbors(graph: Graph)(v: String): AdjListEntry  = {
+		graph match { 
+			case Cons(adjEntry, rest) => (adjEntry.vertex == v) match {
+				case true => adjEntry
+				case _ => rest.lookupNeighbors(v)  
+			}
+			case _ => AdjListEntry("lookup failed", []) // should never happen
+		}
+	}
+	
+	// recursive subprocedure for dfs
+	def dfs_visit(entry: AdjListEntry): Unit / { Finished } = {
+		entry.neighbors.foreach{ vertex => 
+			val visited: Boolean = verticesVisited.unsafeGet(vertex)
+			if(visited) { () }
+			else{ dfs_visit(graph.lookupNeighbors(vertex)) }
+		}
+		verticesVisited.update(entry.vertex, true)
+		do Finished(entry.vertex)
+	}
 
-    //begin DFS
-    graph.foreach{ adjEntry => 
-        val visited: Boolean = verticesVisited.unsafeGet(adjEntry.vertex)
-        if(visited) { () }
-        else{ dfs_visit(adjEntry) }
-    }
+	//begin DFS
+	graph.foreach{ adjEntry => 
+		val visited: Boolean = verticesVisited.unsafeGet(adjEntry.vertex)
+		if(visited) { () }
+		else{ dfs_visit(adjEntry) }
+	}
 
 }
 
 
 //returns topologially sorted vertexlist of a DAG
-def topologicalSort(graph: Graph): List[String]  = {
-    var sortedVertices: List[String] = [] 
-    try{ dfs(graph) } with Finished { vertex => 
-        sortedVertices = Cons(vertex, sortedVertices) // sorts by decreasing finishing time
-        resume(())
-    }
-    sortedVertices.reverse // reverse sorting to increasing finishing time 
+def topSort(graph: Graph): List[String]  = {
+	var sortedVertices: List[String] = [] 
+	try{ dfs(graph) } with Finished { vertex => 
+		sortedVertices  = Cons(vertex, sortedVertices) // sorts by decreasing finishing time
+		resume(())
+	}
+	
+	sortedVertices.reverse // reverse sorting to increasing finishing time 
 }
 
 
 def main() = {
-    
-    var e = AdjListEntry("e", [])
-    var f = AdjListEntry("f", [])
-    var g = AdjListEntry("g", [])
-    val d = AdjListEntry("d", ["e","f","g"])
-    val c = AdjListEntry("c", [])
-    val b = AdjListEntry("b", ["c"])
-    val a = AdjListEntry("a",  ["b","d"] )
-    var graph = [a,b,c,d,e,f,g]
-    var graph2 = [e,b,g,f,c,d,a]
+	
+	var e = AdjListEntry("e", [])
+	var f = AdjListEntry("f", [])
+	var g = AdjListEntry("g", [])
+	val d = AdjListEntry("d", ["e","f","g"])
+	val c = AdjListEntry("c", [])
+	val b = AdjListEntry("b", ["c"])
+	val a = AdjListEntry("a",  ["b","d"] )
+	var graph: Graph = [a,b,c,d,e,f,g]
+	var graph2: Graph = [e,b,g,f,c,d,a]
 
-    var sorted = topologicalSort(graph)
-    val sorted2 = topologicalSort(graph2)
-    println(sorted.join(","))
-    println(sorted2.join(","))
+	var sorted: List[String] = topSort(graph)
+	val sorted2: List[String] = topSort(graph2)
+	println(sorted.join(","))
+	println(sorted2.join(","))
 
-    //more complicated graph
-    val iii = AdjListEntry("3", [])
-    val vii = AdjListEntry("7", [])
-    val vi = AdjListEntry("6", ["7"])
-    val v = AdjListEntry("5", ["3"])
-    val iv = AdjListEntry("4", ["3","5"])
-    val ii = AdjListEntry("2", ["3"])
-    val i = AdjListEntry("1",  ["2","4", "6"] )
-    
-    graph = [i,ii,iii,iv,v,vi,vii]
-    sorted = topologicalSort(graph)
-    println(sorted.join(","))
+	//more complicated graph
+	val iii = AdjListEntry("3", [])
+	val vii = AdjListEntry("7", [])
+	val vi = AdjListEntry("6", ["7"])
+	val v = AdjListEntry("5", ["3"])
+	val iv = AdjListEntry("4", ["3","5"])
+	val ii = AdjListEntry("2", ["3"])
+	val i = AdjListEntry("1",  ["2","4", "6"] )
+	
+	graph = [i,ii,iii,iv,v,vi,vii]
+	sorted = topSort(graph)
+	println(sorted.join(","))
 }
