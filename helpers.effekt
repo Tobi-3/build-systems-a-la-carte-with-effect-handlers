@@ -3,31 +3,44 @@ module helpers
 import tasks/all_tasks
 
 import mutable/map
+import mutable/heap
 import immutable/list
 import immutable/option
 import graph
 
-def dependencies{ task: () => V / {Fetch, NeedInput} }: List[K] = {
+import list_lib
+
+
+def dependencies{ task: () => V / {Fetch, NeedInput} }: List[K] / Console = {
 	var dependencies: List[K] =  []
     try { task() }
-		with Fetch { dep =>  dependencies = dependencies.append([dep]); resume(0)}
-		with NeedInput { _ => resume(1) }
+		with Fetch { dep => dependencies = dependencies.append([dep]); resume(0)}
+		with NeedInput { _ =>  resume(0) }
 
 	dependencies
 }
+// def dependencies{ task: () => V / {Fetch, NeedInput} }: List[K] / Console = {
+// 	var dependencies: List[K] =  []
+//     try { task() }
+// 		with Fetch { dep => println("in dependencies fetch "++ dep); dependencies = dependencies.append([dep]); resume(0)}
+// 		with NeedInput { _ => println("in dependencies NeedInput"); resume(1) }
+
+// 	dependencies
+// }
 
 
-def track(){ task: () => V / { Fetch } }{ fetch: K => V / Fetch} : (V, List[(K, V)]) / { Fetch } = {
+def track(){ task: () => V / { Fetch, NeedInput } } : (V, List[(K, V)]) / { Fetch, NeedInput, Console } = {
 	var dependencies: List[(K, V)] = []
 	val v = try { task() } with Fetch { key => 
-		val v = fetch(key)
+		// println("tracking " ++ key) ; 
+		val v = do Fetch(key)
 		dependencies = dependencies.append([(key, v)])
 		resume(v)  
 	}
 	(v, dependencies)
 }
 
-def graph(key: K){ tasks: K => V / {Fetch, NeedInput}}: Graph = {
+def graph(key: K){ tasks: K => V / {Fetch, NeedInput}}: Graph / Console = {
 	
 	var adjacencyList: List[AdjListEntry] = []
 	
@@ -44,11 +57,54 @@ def graph(key: K){ tasks: K => V / {Fetch, NeedInput}}: Graph = {
 
 // creates file if file does not exist
 // increments modifiying time if file exists
-// def updateFilesystem(filesystem: MakeInfo, files: List[K]) : Unit = {
-// 	var timeNow: Time = filesystem.now.get
-// 	files.foreach { file => 
-// 		filesystem.modTimes.update(file, timeNow)
-// 		timeNow = timeNow + 1
-// 	}
-// 	filesystem.now.put(timeNow)
-// }
+
+def updateFile(store: Map[K,V])(makeInfo: MakeInfo, file: K, value: V) : Unit = {
+	var timeNow: Time = makeInfo.now.get
+
+	makeInfo.modTimes.update(file, timeNow)
+	timeNow = timeNow + 1
+
+	makeInfo.now.put(timeNow)
+}
+def updateFilesystem(filesystem: MakeInfo)(files: List[K]) : Unit = {
+	var timeNow: Time = filesystem.now.get
+	files.foreach { file => 
+		filesystem.modTimes.update(file, timeNow)
+		timeNow = timeNow + 1
+	}
+	filesystem.now.put(timeNow)
+}
+
+def printModTimeStore(modTimes: Map[K, Time], keys: List[K], store: Map[K,V]) : Unit / Console = {
+	keys.foreach { key => 
+		println(key ++ ": " ++ show(store.unsafeGet(key)) ++", time: " ++ show(modTimes.unsafeGet(key)) )
+	}
+}
+
+def printStore(store: Map[K,V])(keys: List[K]) : Unit / Console = {
+	keys.foreach { key => println(key ++ ": " ++ show(store.unsafeGet(key))) }
+}
+
+def handleStore(store: Map[K, V]){ prog: () => Unit / {Store, Fetch, NeedInput} }: Unit / {Fetch, NeedInput} = try { prog() }
+	with Store {
+		def getValue(key) = resume(store.unsafeGet(key))
+		def putValue(key, value) = resume(store.update(key, value))
+	}
+
+def initializeStore(store: Map[K, V],keys: List[K]): Unit = {
+	keys.foreach{ key => (store.get(key)) match {
+			case None() => store.update(key, 1)
+			case Some(_) => ()
+		}
+	}
+}
+
+def showTraces[A](ts: List[Trace[A]]): String = {
+	showList(ts.map{trace => showTrace(trace)})
+}
+
+def showTrace[A](trace: Trace[A]): String = trace match {
+	case Trace(key, list, hash) => "Trace(" ++ key ++ ", " ++ showList(list.map{tuple => tuple match {
+		case Tuple2(v, h) => "("++ show(v) ++", "++ show(h) ++")"
+}}) ++ ", " ++ show(hash) ++ ")"
+}

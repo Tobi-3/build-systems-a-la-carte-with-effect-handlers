@@ -12,7 +12,7 @@ type  VT = List[Trace[Hash[V]]] // Verifying Traces
 
 effect VTState {
     def getVT(): VT
-    def modify(key: K, valueHash: Hash[V], deps: List[(K,Hash[V])]): Unit
+    def modifyVT(trace: VT): Unit
 }
 
 def recordVT(key: K, valueHash: Hash[V], deps: List[(K,Hash[V])], ts: VT[K,V,Hash[V]]): VT[K,V,Hash[V]] = {

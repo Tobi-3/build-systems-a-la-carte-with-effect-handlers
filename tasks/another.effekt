@@ -1,0 +1,14 @@
+module tasks_another
+
+effect Stare {
+    def gat[A](key: A): String
+    def pat[A](key: A, store: String): Unit
+}
+
+def main(): Unit / Console = {
+    try { println(gat[Int](2)) } with Stare {
+        def gat(arg) = { println(arg); resume("done")}
+        def pat(arg, str) = resume(())
+    }
+}
+

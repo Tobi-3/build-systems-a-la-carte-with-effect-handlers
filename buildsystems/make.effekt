@@ -1,4 +1,4 @@
-module make
+module buildsystems_make
 
 import mutable/map
 import mutable/heap
@@ -11,31 +11,29 @@ import tasks/all_tasks
 
 import list_lib
 
-
-type Time = Int
-record MakeInfo(now: Ref[Time], modTimes: Map[K, Time])
-
 effect GetInfo(): MakeInfo
 
 
-def make(target: K){ tasks: K => V / {Fetch, NeedInput} } : Unit / { GetInfo, Store, Fetch, NeedInput }= {
-    topological(target){ (key, value) => modTimeRebuilder(key, value){ () => makefile(key)} }
+def make(target: K){ tasks: K => V / {Fetch, NeedInput} } : Unit / { GetInfo, Store, Console }= {
+	println("making " ++ target )
+    topological(target){ key => tasks(key)}{ (key, value) => 
+		modTimeRebuilder(key, value){ () => tasks(key)} 
+	}
 }
 
 
-def topological(target: K){ rebuilder: (K, V) => V  / {Fetch, NeedInput}}: Unit / {Fetch, NeedInput, Store} = {
-    val order: List[K] = topSort(graph(target){key => makefile(key)})
+def topological(target: K){tasks: K => V / {Fetch, NeedInput}}{ rebuilder: (K, V) => V  / {Fetch, NeedInput}}: Unit / {Store, Console} = {
+    val order: List[K] = topSort(graph(target){key => tasks(key)})
+	println("build order:" ++ showList(order) ++ "\n")
 
-    def build(key: K) = { 
-        val value: V = getValue(key)
-        def fetch(k: K): V = { getValue(k) }
+    def build(key: K): Unit = { 
+        val value: V = do getValue(key)
+        def fetch(k: K): V = { do getValue(k) }
 
         val newValue: V = try { rebuilder(key, value) } 
             with Fetch { key => resume(fetch(key)) }
-            with NeedInput { key => resume(getValue(key)) }
-        putValue(key, newValue)
-        
-        newValue
+            with NeedInput { key => resume(do getValue(key)) }
+        do putValue(key, newValue)
     }    
 
     order.map { file => build(file) };
@@ -43,42 +41,59 @@ def topological(target: K){ rebuilder: (K, V) => V  / {Fetch, NeedInput}}: Unit 
 }
 
 
-def modTimeRebuilder(key: K, value: V){ task: () => V / {Fetch, NeedInput} } : V / { Fetch, NeedInput, GetInfo} = {
+def modTimeRebuilder(key: K, value: V){ task: () => V / {Fetch, NeedInput} } : V / { Fetch, NeedInput, GetInfo, Console} = {
 	val makeInfo: MakeInfo = GetInfo()
 	val dirty: Boolean = (makeInfo.modTimes.get(key)) match {
 			case None()  => true
-			case Some(time) => any(dependencies{ () => makefile(key) }){ dep => makeInfo.modTimes.unsafeGet(dep) > time }
+			case Some(time) => any(dependencies{ () => task() }){ dep => makeInfo.modTimes.unsafeGet(dep) > time }
 		}
-	// if(dirty){ updateFilesystem(makeInfo, [key]); task() }
 	if(dirty){
+		println(key ++ ": dirty, rebuilding with modtimeRebuilder") 
 		val timeNow = makeInfo.now.get
+		val v = task() 
 		makeInfo.modTimes.update(key, timeNow)
 		makeInfo.now.put(timeNow + 1)
-		task() 
+		v
 		}
-	else { value } 
+	else { println(key ++ ": not dirty, returning from store: " ++ show(value)); value } 
 }
 
 
 def main() = {
 	val store: Map[K, Time] = emptyMap()
-	val makeInfo: MakeInfo = MakeInfo(fresh(0), store) 
+	val makeInfo: MakeInfo = MakeInfo(fresh(0), emptyMap()) 
 
+	store.update("util.h", 1)
+	store.update("util.c", 1)
+	store.update("main.c", 1)
+	store.update("util.o", 0)
+	store.update("main.o", 0)
+	store.update("main.exe", 0)
+	makeInfo.updateFilesystem(["main.exe", "main.o", "main.c", "util.o",  "util.c", "util.h"])
+	// initializeStore(store, ["util.c", "util.o", "util.h", "main.o", "main.c", "main.exe"] )
+	// makeInfo.updateFilesystem(["main.exe", "main.o", "main.c", "util.o", "util.c", "util.h"])
 	val graph = graph("main.exe"){ key => makefile(key)}
 	val sorted = topSort(graph)
-	println(graph)
-	println("")
-	println("["++ sorted.join(", ") ++ "]")
+	// println("["++ sorted.join(", ") ++ "]")
 
-	try{ make("main.exe"){key => makefile(key)} }
-	with Store {
+	try{
+		printModTimeStore(makeInfo.modTimes, sorted, store)
+		make("main.exe"){key => makefile(key)}
+		println("")
+		printModTimeStore(makeInfo.modTimes, sorted, store)
+		println("")
+		make("main.exe"){key => makefile(key)}
+		println("")
+		printModTimeStore(makeInfo.modTimes, sorted, store)
+		println("")
+		makeInfo.updateFilesystem(["main.c"])
+		make("main.exe"){key => makefile(key)}
+		printModTimeStore(makeInfo.modTimes, sorted, store)
+		println("")
+	} with Store {
 		def getValue(key) = resume(store.unsafeGet(key))
 		def putValue(key, value) = resume(store.update(key, value))
-	}
-	with GetInfo { () => resume(makeInfo) }
-	with Fetch { key => resume(1) }
-	with NeedInput { key => resume(0) }
+	} with GetInfo { () => resume(makeInfo) }
 
-	sorted.foreach{ key => println(key ++ " -> " ++ show(store.get(key)))}
 }
 

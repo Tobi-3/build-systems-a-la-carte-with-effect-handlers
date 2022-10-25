@@ -1,4 +1,4 @@
-module excel
+module buildsystems_excel
 
 import mutable/map
 import immutable/list
@@ -8,57 +8,73 @@ import tasks/all_tasks
 
 import list_lib
 
+
 type Chain = List[K]
+
+effect Fail(key: K): Chain
 type ExcelInfo = (Map[K,Boolean], Chain)
-type Either[A,B]{
-    Right(value: A)
-    Left(key: B)
-}
 
 effect Dirty(key: K): Boolean
 effect CleanStore(key: K): Unit
-effect State {
+effect ExcelState {
     def getChain(): Chain
+    def modifyExcelInfo(newChain: Chain): Unit
 }
 
 
-def restarting(target: K){ rebuilder: (K,V) => V } = {
-    val chain: Chain = getChain()
-    val done: Map[K, Boolean] = emptyMap()
-    // val newChain
-    def go(c: Chain) = c match {
+def restarting(target: K){tasks: K => V / { Fetch, NeedInput, Console }}{ rebuilder: (K,V) => V / {Fetch, NeedInput } }: Unit / { Store, ExcelState, Console } = {
+    val chain: Chain = do getChain()
+    println("starting chain: " ++ showList(chain))
+    def go(done: List[K], c: Chain): Chain / { Store, ExcelState, Console } = c match {
         case Nil() => []
-        case Cons(key, keys) => 
-            def fetch(k: K) : Either[V,K] = {
-                (done.get(key)) match {
-                    case Some(_) => Right(getValue(k))
-                    case _ => Left(key)
+        case Cons(key, keys) =>
+            println("chain: " ++ showList(c))
+            var isNothing = false
+            try { tasks(key) } 
+                with Fetch { _ => 0 }
+                with NeedInput { _ => isNothing = true; 0 }
+
+            if(isNothing){
+                Cons(key, go(Cons(key, done), keys))
+            } else {
+                println("processed keys: " ++ showList(done))
+
+                def fetch(k: K): V / { Fail, Store,Console }  = { (done.contains(k)) match {
+                    case true =>  do getValue(k)
+                    case false => do Fail(k); println("---\n\t\toh ups, it did it\n---"); 42 // dummy value 
+                }}
+
+                try {
+                    try { 
+                        val newValue: V = rebuilder(key, do getValue(key))
+                        println("newValue for " ++ key ++  ": " ++ show(newValue))
+                        putValue(key, newValue)
+                        Cons(key, go(Cons(key, done), keys))
+                    } with Fetch { k => resume(fetch(k)) }
+                      with NeedInput { k => resume(do getValue(k))}
+                } with Fail { dep =>  
+                    println("failed building " ++ dep)
+                    go(done, Cons(dep, Cons(key, keys.filter{ elem => elem != dep })))
                 }
-            }
-            val result = try { rebuilder(key, getValue(key)) }
-                with Fetch { k => resume(fetch(k)) }
-                with NeedInput { k => done.update(key, true); resume(Cons(key, go(keys))) }
-            result match {
-                case Left(dep) => go((Cons(dep, keys.filter{ k => k != dep})).append([key]))
-                case Right(newValue) => putValue(key, newValue); done.update(key, true)
-                                        Cons(key, go(keys))
-            }     
-    } 
-    ()
+            }    
+    }
+    
+    val targetList: List[K] = if(chain.contains(target)) [] else [target]
+    val newChain: Chain = go([], chain.append(targetList));
+    // val newChain: Chain = go([], chain.append(if(chain.contains(target)) [] else [target]));
+    println("newChain: " ++ showList(newChain))
+    modifyExcelInfo(newChain)
 }
 
 
-val DirtyBitStore: Map[K, Boolean] = emptyMap()
-
-def dirtybitRebuilder(key: K, value: V){ task: () => V / Fetch }{fetch: K => V} : V / { CleanStore, Dirty, Fetch  } = {
+def dirtybitRebuilder(key: K, value: V){ task: () => V / {Fetch, NeedInput} } : V / { CleanStore, Dirty, Fetch, NeedInput } = {
 	
 	val dirty: Boolean = do Dirty(key)
-	if(dirty){ try { task() } with Fetch { k => fetch(k)} }
-	else { value } 
+	if(dirty){ task() } 
+    else { value } 
 }
 
 
 def main() = {
 	()
-	
 }

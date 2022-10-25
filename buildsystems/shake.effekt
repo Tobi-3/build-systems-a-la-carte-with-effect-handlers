@@ -1,4 +1,4 @@
-module shake
+module buildsystems_shake
 
 import mutable/map
 import immutable/list
@@ -11,28 +11,25 @@ import tasks/all_tasks
 import list_lib
 
 
-def shake(target: K){tasks: K => V / {Fetch, NeedInput} }: Unit / { Console, Store, VTState } = {
+def shake(target: K){ tasks: K => V / {Fetch, NeedInput} }: Unit / { Console, Store, VTState } = {
     println("shaking " ++ target);
-    suspending(target){ (key, value) => vtRebuilder(key, value){ () => tasks(key) } }
+    suspending(target){ (key, value) => 
+        vtRebuilder(key, value){ () => tasks(key) } 
+    }
 }
-// def shake(target: K){tasks: K => V / {Fetch, NeedInput} }: Unit / { Console, Store, VTState } = {
-//     println("shaking " ++ target);
-//     suspending(target){ (key, value) => vtRebuilder(key, value){ () => tasks(key) }{ k => do Fetch(k) } }
-// }
 
 
-def suspending(target: K){ rebuilder: (K,V) => V / { VTState, Fetch, NeedInput } }: Unit / { Store, VTState } = { 
+def suspending(target: K){ rebuilder: (K,V) => V / { Fetch, NeedInput } }: Unit / { Store, Console } = { 
     val done: Map[K, Boolean] = emptyMap()
     
     def fetch(key: K): V = {
-        
         (done.get(key)) match {
-            case Some(_) => getValue(key) // don't rebuild key, so just get the current value from store
+            case Some(_) => do getValue(key) // don't rebuild key, so just get the current value from store
             case None() => 
-                val value = getValue(key) // get previous build value
+                val value = do getValue(key) // get previous build value
                 val newValue = try { rebuilder(key,value) } // rebuild if outdated, else newValue = value 
                     with Fetch { key => resume(fetch(key)) } 
-                    with NeedInput { key => resume(getValue(key)) }
+                    with NeedInput { key => resume(do getValue(key)) }
                 putValue(key, newValue); done.update(key, true)
                 
                 newValue
@@ -43,44 +40,20 @@ def suspending(target: K){ rebuilder: (K,V) => V / { VTState, Fetch, NeedInput }
     ()
 }
 
-// def suspending(target: K){tasks: K => V / { Fetch, NeedInput } }{ rebuilder: (K,V) => V / { VTState, Fetch } }: Unit / { Store, Console, VTState } = { 
-//     val done: Map[K, Boolean] = emptyMap()
-    
-//     def fetch(key: K): V = {
-//         var newValue: V = getValue(key)
-//         try { tasks(key) } 
-//         with Fetch { _ => 
-            
-//             (done.get(key)) match {
-//                 case Some(_) => newValue // don't rebuild key, so just get the current value from store
-//                 case None() => 
-//                     newValue = try { rebuilder(key, newValue) } // rebuild if outdated, else newValue = newValue 
-//                         with Fetch { key => resume(fetch(key)) } 
-//                         // with NeedInput { key => println("OHNO!\n\nshould not get here\n\nEND OHNO!\n\n"); resume(getValue(key)) }
-//                     putValue(key, newValue); done.update(key, true); newValue                    
-//             }
-//         }
-//         with NeedInput { k => resume(getValue(k)) }
-//         newValue
-//     }
 
-//     fetch(target);
-//     ()
-// }
-
-def vtRebuilder(key: K, value: V){ task: () => V / Fetch }: V / { VTState, Fetch, Console } = {
-	val upToDate = verifyVT(key, hash(value), getVT()){ k => hash (do Fetch(k)) }
-	if(upToDate) { println("'"++ key ++"' -> " ++ show(value) ++ " is up to date") ; value }
+def vtRebuilder(key: K, value: V){ task: () => V / {Fetch, NeedInput} }: V / { VTState, Fetch, NeedInput, Console } = {
+	val upToDate = verifyVT(key, hash(value), do getVT()){ k => hash (do Fetch(k)) }
+	if(upToDate) { println(key ++" -> " ++ show(value) ++ " is up to date") ; value }
 	else { // rebuild value and add to VT
-		println("'"++ key ++ "' -> " ++ show(value) ++" is not up to date. rebuilding key")
-		track(){ () => task() }{ k => do Fetch(k) } match {
+		println(key ++ " -> " ++ show(value) ++" is not up to date. rebuilding key")
+		track(){ () => task() } match {
 			case (newValue, deps) => 
 				val hashedDeps = deps.map{ keyValPair => keyValPair match { 
 						case (key, value) => (key, hash(value)) 
 					}
 				}
-				do modify(key, hash(newValue), hashedDeps) 
-				println("the new value for '" ++ key ++ "': " ++ show(newValue) )
+				do modifyVT(recordVT(key, hash(newValue), hashedDeps, do getVT())) 
+				println(key ++ "'s new value: " ++ show(newValue) )
 				newValue
 		}
 	}
@@ -88,53 +61,54 @@ def vtRebuilder(key: K, value: V){ task: () => V / Fetch }: V / { VTState, Fetch
 
 
 def main() = {
+    val keys = ["A", "B", "C", "D","E","F"]
     val store: Map[K,V] = emptyMap()
     var vTraces: VT = []
 
-    def printKeyVal(key: K) = println(key ++  " -> " ++ show(store.get(key)) )
-    def printKeys(keys: List[K]) = {keys.map{ key => printKeyVal(key) }; println("\n") }
-
-    store.update("A",1)
-    store.update("B",1)
-    store.update("C",1)
+    store.update("A",0)
+    store.update("B",0)
+    store.update("C",0)
     store.update("D",1)
     store.update("E",1)
 	store.update("F",1)
-	store.update("G",1)
-	store.update("H",1)
-	store.update("Z",42)
+
+    store.printStore(keys)
 
     try {
         
-        shake("A"){ key => lotsOfDeps(key)}
-        printKeys(["A", "B", "C", "D"])
+        shake("A"){ key => exampleTasks(key)}
+        store.printStore(keys)
         
-        shake("B"){ key => lotsOfDeps(key)}
-        printKeys(["A", "B", "C", "D"])
+        println("")
+        println(showTraces(vTraces))
 
         store.update("E", 2)
-        shake("C"){ key => lotsOfDeps(key)}
-        printKeys(["A", "B", "C", "D","E"])
+        shake("A"){ key => exampleTasks(key)}
+        store.printStore(keys)
+        println("")
+        println(showTraces(vTraces))
         
-        shake("A"){ key => lotsOfDeps(key)}
-        printKeys(["A", "B", "C", "D", "E"])
+        shake("A"){ key => exampleTasks(key)}
+        store.printStore(keys)
         // shake("Z"){ key => onlyInput(key)}
-        // printKeys(["Z"])
+        // store.printStore(["Z"])
 
         // shake("Z"){ key => onlyInput(key)}
-        // printKeys(["Z"])
+        // store.printStore(["Z"])
 
         println("")
-        println(vTraces.join("; "))
+        println(showTraces(vTraces))
         
     } with Store {
         def putValue(key, value) = resume(store.update(key, value))
         def getValue(key) = resume(store.unsafeGet(key))
     } with VTState {
         def getVT() = resume(vTraces)
-        def modify(k, valHash, deps) = { vTraces = recordVT(k, valHash, deps, vTraces); resume(()) }
+        def modifyVT(newTraces) = { vTraces = newTraces; resume(()) }
     } // with NeedInput { key => resume(store.unsafeGet(key)) }
 }
+
+
 
 // def main() = {
 	
@@ -150,17 +124,17 @@ def main() = {
 
 // 	// fetch function for testing vtRebuilder
 // 	// uses task descriptions recursively to build a new key
-// 	def fetch(k: K): V / NeedInput= try { lotsOfDeps(k) }  with Fetch { k =>
+// 	def fetch(k: K): V / NeedInput= try { exampleTasks(k) }  with Fetch { k =>
 // 		resume(fetch(k))
 // 	}
 
 	
 // 	def tryRebuilder(testValue: V) = 
 // 		try { 
-// 			try { vtRebuilder("A", testValue){ () => lotsOfDeps("A") }{ k => fetch(k)} } 
+// 			try { vtRebuilder("A", testValue){ () => exampleTasks("A") }{ k => fetch(k)} } 
 // 			with VTState { 
 // 				def getVT() = resume(vTraces) 
-// 				def modify(k, valHash, deps) = { vTraces = recordVT(k, valHash, deps, vTraces); resume(())}
+// 				def modifyVT(k, valHash, deps) = { vTraces = recordVT(k, valHash, deps, vTraces); resume(())}
 // 				}
 // 			// with Fetch { key => resume(fetch(key))  }
 // 		} with NeedInput { key => resume(store.unsafeGet(key)) }

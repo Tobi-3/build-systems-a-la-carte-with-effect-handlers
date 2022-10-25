@@ -16,6 +16,10 @@ def join[A](l: List[A])( seperator: String) : String = l match{
 	case Cons(fst, rest) => show(fst) ++ seperator ++ rest.join(seperator)
 }
 
+def showList[A](l: List[A]): String = {
+	"["++ l.join(", ")++ "]"
+}
+
 
 def filter[A](l: List[A]){f : A => Boolean} : List[A] = l match {
 	case Nil() => Nil()
@@ -45,6 +49,10 @@ def any[A](l: List[A]){ f: A => Boolean }: Boolean = l match {
 	}
 }
 
+def contains[A](l: List[A])(elem: A): Boolean = l match {
+	case Nil() => false
+	case Cons(a, rest) => if(a == elem) { true } else { rest.contains(elem) } 
+}
 
 // def main() = {
 //  val list = [1,2,3]

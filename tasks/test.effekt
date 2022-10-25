@@ -1,0 +1,17 @@
+module tasks_test
+
+import mutable/map
+
+def main() = {
+    val a: Map[Int, Boolean] = emptyMap()
+    val b: Map[Int, Boolean] = a
+
+    a.update(1,true)
+    println(a.get(1))
+    
+    b.update(1,false)
+    a.get(1)
+    println(a.get(1))
+    
+}
+

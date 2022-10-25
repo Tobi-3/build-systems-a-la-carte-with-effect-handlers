@@ -1,4 +1,5 @@
-import traces
+
+module buildsystems_import traces
 
 import mutable/map
 import tasks/all_tasks
@@ -15,29 +16,7 @@ def busy(key: K){ tasks: K => V / { Fetch, NeedInput, Store } } = {
 	fetch(key)
 }
 
-// effect GetStore(): Map[K,V]
 
-// def busy(key: K){ tasks: K => V / { Fetch, NeedInput } }: V / { Console, GetStore } = {
-// 	val store = do GetStore()
-// 	def fetch(k: K): V / Store = try {  
-// 		val v = tasks(k)
-// 		putValue(k, v)
-// 		v 
-// 	} with Fetch { key => resume(fetch(key))
-// 	} with NeedInput{ key => getValue(key) }
-	
-// 	try { fetch(key) } with Store {
-//         def getValue(key) = { 
-// 			println("getting input " ++ key ++ " from Store")
-// 			resume(store.unsafeGet(key)) }
-        
-// 		def putValue(key, value) = { 
-// 			println("putting " ++ "(" ++ key ++ ", " ++ show(value) ++") in store")
-// 			resume(store.update(key, value))
-// 		}
-// 	} 
-// } 
-	
 
 def main() = {
 
@@ -61,6 +40,4 @@ def main() = {
 			resume(store.update(key, value))
 		}
 	}
-	// with GetStore { resume(store) }
-
 }

@@ -1,0 +1,81 @@
+module buildsystems_mix
+
+import mutable/map
+import mutable/heap
+import immutable/list
+
+import buildsystems/make
+import buildsystems/shake
+import buildsystems/excel
+import helpers
+import tasks/all_tasks
+import traces
+
+import list_lib
+
+def susTime(target: K){tasks: K => V / { Fetch, NeedInput} }: Unit / {Store, GetInfo, Console} = { 
+    suspending(target){ (key, value) => 
+        modTimeRebuilder(key,value){ () => tasks(key) } 
+    }
+}
+def topoVt(target: K){tasks: K => V / { Fetch, NeedInput} }: Unit / {Store, Console, VTState} = {
+    topological(target){ key => tasks(key) }{ (key, value) =>
+        vtRebuilder(key,value){ () => tasks(key) }  
+    }
+}
+
+def restTime(target: K){tasks: K => V / { Fetch, NeedInput} }: Unit / { GetInfo, Console, Store, ExcelState } = {
+    restarting(target){ key => tasks(key) }{ (key, value) =>
+        modTimeRebuilder(key,value){ () => tasks(key) }  
+    }
+}
+
+def restVt(target: K){tasks: K => V / { Fetch, NeedInput} }: Unit / { VTState, Console, Store, ExcelState } = {
+    restarting(target){ key => tasks(key) }{ (key, value) =>
+        vtRebuilder(key,value){ () => tasks(key) }  
+    }
+}
+
+
+
+def main() = {
+    val store: Map[K,V] = emptyMap();
+    val modTimes: Map[K, Time] = emptyMap();
+	val makeInfo: MakeInfo = MakeInfo(fresh(0), modTimes);
+    var excelInfo: ExcelInfo = (emptyMap(), []) // start with empty chain
+    var vTraces: VT = []
+
+    // makeInfo.updateFilesystem(["H","G", "F","E", "D", "C", "B", "A"])
+    makeInfo.updateFilesystem(["A","B", "C"])
+    store.update("A",0)
+    store.update("B",0)
+    store.update("C",1)
+	
+
+    store.printStore(["A", "B", "C"])
+
+
+    try { 
+        restVt("A"){ key => fewTasks(key) }
+        store.printStore(["A", "B", "C"])
+        store.update("C", 2)
+        restVt("A"){ key => fewTasks(key) }
+        store.printStore(["A", "B", "C"])
+    }
+    with VTState {
+        def getVT() = resume(vTraces)
+        def modifyVT(newTrace) = { vTraces = newTrace; resume(()) }
+    }
+    with ExcelState {
+        def getChain() = resume(excelInfo.second)
+        def modifyExcelInfo(newChain) = { excelInfo = (emptyMap(), newChain); resume(())}
+    }
+    with Store {
+        def getValue(key) = { resume(store.unsafeGet(key))}
+        def putValue(key, value) = { println("putting in store: " ++ key ++ ", " ++show(value)) ; resume(store.update(key, value))}
+    }
+    // with GetInfo { resume(makeInfo) }
+    
+    ()
+    // println(vTraces)
+}
